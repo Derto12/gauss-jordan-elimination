@@ -14,24 +14,31 @@ instance Ord GElem where
     (<=) (G a1 _ _) (G a2 _ _) = a1 <= a2
 
 instance Num GElem where
-    (+) (G a1 marked mRow) (G a2 _ _) = (G (a1 + a2) marked mRow)
-    (-) (G a1 marked mRow) (G a2 _ _) = (G (a1 - a2) marked mRow)
-    (*) (G a1 marked mRow) (G a2 _ _) = (G (a1 * a2) marked mRow)
-    abs (G a marked mRow) = (G (abs a) marked mRow)
-    signum (G a marked mRow) = (G (signum a) marked mRow)
+    (+) (G a1 marked mNeigh) (G a2 _ _) = (G (a1 + a2) marked mNeigh)
+    (-) (G a1 marked mNeigh) (G a2 _ _) = (G (a1 - a2) marked mNeigh)
+    (*) (G a1 marked mNeigh) (G a2 _ _) = (G (a1 * a2) marked mNeigh)
+    abs (G a marked mNeigh) = (G (abs a) marked mNeigh)
+    signum (G a marked mNeigh) = (G (signum a) marked mNeigh)
     fromInteger i = (G (fromInteger i) False False)
 
 instance Fractional GElem where
-    (/) (G a marked mRow) (G b _ _) = (G (a/b) marked mRow)
+    (/) (G a marked mNeigh) (G b _ _) = (G (a/b) marked mNeigh)
     fromRational r = (G (fromRational r) False False)
 
 instance Show GElem where
-    show (G a marked mRow)
-     | marked = "<<("++show a++")>>"
-     | otherwise = "("++show a++")"
-    showList (xs) = ((intercalate " " $ map show xs) ++)
+    show (G a marked mNeigh)
+     | marked = "<("++strA++")>"
+     | otherwise = "("++strA++")"
+      where
+      strA = 
+        if drop c str == " % 1" 
+        then take c str
+        else show a
+         where
+          str = show a
+          c = length str - 4
+    showList (xs) = (((intercalate " " $ map show (init xs)) ++ (" | " ++ show (last xs)))++)
 
--- TODO - better visualize data
 printGauss :: [[GElem]] -> IO () 
 printGauss as = putStrLn (unlines (map (\a -> show a) as))
 
@@ -48,29 +55,25 @@ toRational (G a False False) = a
 joinLists :: [[a]] -> [a]
 joinLists as = foldr (++) [] as
 
--- FIX - minWhere returns the minimum value, but the closest number to 1 would be more ideal
-minWhere :: Ord a => (a -> Bool) -> [a] -> (Bool, Int, a)
-minWhere _ [] = error "empty list"
-minWhere f l@(a:as) = minHelper f False 0 a 0 l
+findWhere :: (a -> Bool) -> [a] -> (Bool, Int, a)
+findWhere _ [] = error "empty list"
+findWhere f l@(a:as) = findHelper f a 0 l
     where
-    minHelper :: Ord a => (a -> Bool) -> Bool -> Int -> a -> Int -> [a] -> (Bool, Int, a)
-    minHelper _ found minInd minVal _ [] = (found, minInd, minVal)
-    minHelper f found minInd minVal currInd (a:as)
-     | found && f a = if
-        | a < minVal -> minHelper f found currInd a (currInd+1) as
-        | otherwise -> minHelper f found minInd minVal (currInd+1) as
-     | not found && f a = minHelper f True currInd a (currInd+1) as
-     | otherwise = minHelper f found minInd minVal (currInd+1) as
+    findHelper ::(a -> Bool) ->  a -> Int -> [a] -> (Bool, Int, a)
+    findHelper _ val _ [] = (False, 0, val)
+    findHelper f val currInd (a:as)
+     | f a = (True, currInd, a)
+     | otherwise = findHelper f val (currInd+1) as
 
-minWhereMulti :: (Ord a) => (a -> Bool) -> [[a]] -> (Bool, (Int, Int), a)
-minWhereMulti f as = (found, newInd, val)
+findWhereMulti :: (Ord a) => (a -> Bool) -> [[a]] -> (Bool, (Int, Int), a)
+findWhereMulti f as = (found, newInd, val)
     where
-    (found, ind, val) = minWhere f (joinLists as)
+    (found, ind, val) = findWhere f (joinLists as)
     newInd = (div ind (length (as !! 0)), mod ind (length (as !! 0)))
 
 gaussSelector :: [[GElem]] -> (Bool, (Int, Int), GElem)
 gaussSelector as = (found, (x, y), a)
- where (found, (x, y), a) = minWhereMulti (\(G a _ mRow) -> not mRow && a /= 0) as
+ where (found, (x, y), a) = findWhereMulti (\(G a _ mNeigh) -> not mNeigh && a /= 0) as
 
 changeElem :: Int -> a -> [a] -> [a]
 changeElem i a as = as1 ++ a:as2
