@@ -3,7 +3,9 @@
 module Gauss where
 
 import Data.List (intercalate)
+import Data.Maybe
 
+-- GElem and GElem related functions
 data GElem = G Rational Bool Bool
  deriving (Eq)
 
@@ -39,10 +41,6 @@ instance Show GElem where
           c = length str - 4
     showList (xs) = (((intercalate " " $ map show (init xs)) ++ (" | " ++ show (last xs)))++)
 
-printGauss :: [[GElem]] -> IO () 
-printGauss as = putStrLn (unlines (map (\a -> show a) as))
-
-
 toGelem :: Rational -> GElem
 toGelem a = G a False False
 
@@ -52,28 +50,12 @@ toGList as = map toGelem as
 toRational :: GElem -> Rational
 toRational (G a False False) = a
 
-joinLists :: [[a]] -> [a]
-joinLists as = foldr (++) [] as
+flatten :: [[a]] -> [a]
+flatten as = foldr (++) [] as
 
-findWhere :: (a -> Bool) -> [a] -> (Bool, Int, a)
-findWhere _ [] = error "empty list"
-findWhere f l@(a:as) = findHelper f a 0 l
-    where
-    findHelper ::(a -> Bool) ->  a -> Int -> [a] -> (Bool, Int, a)
-    findHelper _ val _ [] = (False, 0, val)
-    findHelper f val currInd (a:as)
-     | f a = (True, currInd, a)
-     | otherwise = findHelper f val (currInd+1) as
-
-findWhereMulti :: (Ord a) => (a -> Bool) -> [[a]] -> (Bool, (Int, Int), a)
-findWhereMulti f as = (found, newInd, val)
-    where
-    (found, ind, val) = findWhere f (joinLists as)
-    newInd = (div ind (length (as !! 0)), mod ind (length (as !! 0)))
-
-gaussSelector :: [[GElem]] -> (Bool, (Int, Int), GElem)
-gaussSelector as = (found, (x, y), a)
- where (found, (x, y), a) = findWhereMulti (\(G a _ mNeigh) -> not mNeigh && a /= 0) as
+-- Other helper functions
+printTable :: [[GElem]] -> IO () 
+printTable as = putStrLn (unlines (map (\a -> show a) as))
 
 changeElem :: Int -> a -> [a] -> [a]
 changeElem i a as = as1 ++ a:as2
@@ -90,27 +72,55 @@ removeElemAt i as = as1 ++ as2
   where
   (as1, _:as2) = splitAt i as
 
-uniteElems :: (a -> a -> a) -> [a] -> [a] -> [a]
-uniteElems _ [] bs = bs
-uniteElems _ as [] = as
-uniteElems f (a:as) (b:bs) = f a b:uniteElems f as bs
+findWhere :: (a -> Bool) -> [a] -> Maybe (Int, a)
+findWhere _ [] = error "empty list"
+findWhere f ls = findHelper f 0 ls
+    where
+    findHelper ::(a -> Bool) ->  Int -> [a] -> Maybe (Int, a)
+    findHelper _ _ [] = Nothing
+    findHelper f currInd (a:as)
+     | f a = Just (currInd, a)
+     | otherwise = findHelper f (currInd+1) as
+
+findWhereMulti :: (Ord a) => (a -> Bool) -> [[a]] -> Maybe ((Int, Int), a)
+findWhereMulti f as
+ | isJust maybeA = Just (newInd, val)
+ | otherwise = Nothing
+    where
+    maybeA = findWhere f (flatten as)
+    (ind, val) = fromJust maybeA
+    newInd = (div ind (length (as !! 0)), mod ind (length (as !! 0)))
+
+hasSameLengthLists :: [[a]] -> Bool
+hasSameLengthLists (a:as) = hasHelper a as
+    where
+    hasHelper :: [a] -> [[a]] -> Bool
+    hasHelper _ [] = True
+    hasHelper a (l:ls)
+     | length a == length l = hasHelper a ls
+     | otherwise = False
+
+
+-- Gauss-Jordan elimination related functions
+selectNext :: [[GElem]] -> Maybe ((Int, Int), GElem)
+selectNext as = findWhereMulti (\(G a _ mNeigh) -> not mNeigh && a /= 0) as
 
 markSelected :: (Int, Int) -> GElem -> [[GElem]] -> [[GElem]]
 markSelected (i, j) (G v _ _) as = changeElem i (changeElem j (G v True True) (as!!i)) as
 
-markVertical :: Int -> [[GElem]] -> [[GElem]]
-markVertical j as = map (\a -> markHelper j (a!!j) a) as
+markRow :: Int -> [[GElem]] -> [[GElem]]
+markRow j as = map (\a -> markHelper j (a!!j) a) as
     where
     markHelper :: Int -> GElem -> [GElem] -> [GElem]
     markHelper i (G a marked _) as = changeElem i (G a marked True) as
 
-markHorizontal :: Int -> [[GElem]] -> [[GElem]]
-markHorizontal i as = changeElem i a as
+markColumn :: Int -> [[GElem]] -> [[GElem]]
+markColumn i as = changeElem i a as
     where
     a = map (\(G a marked _) -> (G a marked True)) (as!!i)
 
 markNeighbours :: (Int, Int) -> GElem -> [[GElem]] -> [[GElem]]
-markNeighbours (i, j) g as = markHorizontal i (markVertical j (markSelected (i, j) g as))
+markNeighbours (i, j) g as = markColumn i (markRow j (markSelected (i, j) g as))
 
 divideSelectedRow :: Int -> GElem -> [[GElem]] -> [[GElem]]
 divideSelectedRow i a as = changeElem i (map (/a) (as!!i)) as
@@ -122,34 +132,32 @@ decrOtherRows (i,j) g as = addElemAt i gs (decrHelper (removeElemAt i as))
     decrHelper :: [[GElem]] -> [[GElem]]
     decrHelper ls = map mapHelper ls
      where
-     mapHelper l = uniteElems uniteHelper l gs
+     mapHelper l = zipWith uniteHelper l gs
       where
       uniteHelper e1 e2 = e1 - ((l!!j) / g) * e2
-
-hasSameLengthLists :: [[a]] -> Bool
-hasSameLengthLists (a:as) = hasHelper a as
-    where
-    hasHelper :: [a] -> [[a]] -> Bool
-    hasHelper _ [] = True
-    hasHelper a (l:ls)
-     | length a == length l = hasHelper a ls
-     | otherwise = False
 
 calcGauss :: [[Rational]] -> [[GElem]]
 calcGauss [] = error "empty list"
 calcGauss as
- | hasSameLengthLists as = gaussHelper1 $ map toGList as
+ | hasSameLengthLists as = executeSteps $ prepareTable $ map toGList as
  | otherwise = error "varying list lengths"
 
-gaussHelper1 :: [[GElem]] -> [[GElem]]
-gaussHelper1 as = gaussHelper2 (markVertical (length (as!!0) - 1) as)
+prepareTable :: [[GElem]] -> [[GElem]]
+prepareTable as = markRow (length (as!!0) - 1) as
 
-gaussHelper2 :: [[GElem]] -> [[GElem]]
-gaussHelper2 as
- | found = gaussHelper2 (decrOtherRows (i,j) (G 1 True True) (divideSelectedRow i g (markNeighbours (i,j) g (markSelected (i,j) g as))))
+executeSteps :: [[GElem]] -> [[GElem]]
+executeSteps as
+ | isJust maybeFound = executeSteps (
+    decrOtherRows (i,j) (G 1 True True) (
+        divideSelectedRow i g (
+            markNeighbours (i,j) g (
+                markSelected (i,j) g as)
+    )))
  | otherwise = as
     where
-    (found, (i, j), g) = gaussSelector as
+    maybeFound = selectNext as
+    ((i, j), g) = fromJust maybeFound
 
+-- TODO - Make the function with other params as well
 gauss :: [[Rational]] -> IO ()
-gauss as = printGauss (calcGauss as)
+gauss as = printTable (calcGauss as)
