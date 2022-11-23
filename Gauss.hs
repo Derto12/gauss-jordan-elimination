@@ -39,7 +39,7 @@ instance Show GElem where
          where
           str = show a
           c = length str - 4
-    showList (xs) = (((intercalate " " $ map show (init xs)) ++ (" | " ++ show (last xs)))++)
+    showList (xs) = ((intercalate " " $ map show xs) ++)
 
 toGelem :: Rational -> GElem
 toGelem a = G a False False
@@ -47,15 +47,23 @@ toGelem a = G a False False
 toGList :: [Rational] -> [GElem]
 toGList as = map toGelem as
 
+toMRowList :: [Rational] -> [GElem]
+toMRowList as = map (\a -> (G a False True)) as
+
+toGNestedList :: [[Rational]] -> [[GElem]]
+toGNestedList as = map toGList as
+
 toRational :: GElem -> Rational
 toRational (G a False False) = a
 
-flatten :: [[a]] -> [a]
-flatten as = foldr (++) [] as
+printTable :: Int -> [[GElem]] -> IO () -- where the Int represents the number of columns on the LHS
+printTable i as = putStrLn $ unlines $ map (\a -> (showRow $ take i a) ++ "|    " ++ (showRow $ drop i a)) as
+ where
+ showRow as = flatten $ map (\a -> show a ++ replicate (8 - (length $ show a)) ' ') as
 
 -- Other helper functions
-printTable :: [[GElem]] -> IO () 
-printTable as = putStrLn (unlines (map (\a -> show a) as))
+flatten :: [[a]] -> [a]
+flatten as = foldr (++) [] as
 
 changeElem :: Int -> a -> [a] -> [a]
 changeElem i a as = as1 ++ a:as2
@@ -132,18 +140,15 @@ decrOtherRows (i,j) g as = addElemAt i gs (decrHelper (removeElemAt i as))
     decrHelper :: [[GElem]] -> [[GElem]]
     decrHelper ls = map mapHelper ls
      where
-     mapHelper l = zipWith uniteHelper l gs
+     mapHelper l = zipWith zipHelper l gs
       where
-      uniteHelper e1 e2 = e1 - ((l!!j) / g) * e2
+      zipHelper e1 e2 = e1 - ((l!!j) / g) * e2
 
-calcGauss :: [[Rational]] -> [[GElem]]
-calcGauss [] = error "empty list"
-calcGauss as
- | hasSameLengthLists as = executeSteps $ prepareTable $ map toGList as
- | otherwise = error "varying list lengths"
-
-prepareTable :: [[GElem]] -> [[GElem]]
-prepareTable as = markRow (length (as!!0) - 1) as
+prepareTable :: Int -> [[GElem]] -> [[GElem]]
+prepareTable i as = prepareHelper i (length (as!!0)) as
+ where
+ prepareHelper :: Int -> Int -> [[GElem]] -> [[GElem]]
+ prepareHelper i n as = markRow (n - i) as
 
 executeSteps :: [[GElem]] -> [[GElem]]
 executeSteps as
@@ -158,6 +163,30 @@ executeSteps as
     maybeFound = selectNext as
     ((i, j), g) = fromJust maybeFound
 
--- TODO - Make the function with other params as well
-gauss :: [[Rational]] -> IO ()
-gauss as = printTable (calcGauss as)
+-- gauss table with no right hand side
+gaussNRH :: [[Rational]] -> [[GElem]]
+gaussNRH [] = error "empty list"
+gaussNRH as
+ | hasSameLengthLists as = executeSteps $ toGNestedList as
+ | otherwise = error "varying list lengths"
+
+-- gauss table with vector at the right hand side
+gaussVRH :: [[Rational]] -> [Rational] -> [[GElem]]
+gaussVRH as bs
+ | as == [] || bs == [] = error "empty list"
+ | hasSameLengthLists as && length as == length bs = executeSteps (
+    zipWith (\a b -> a++[b]) (toGNestedList as) (toMRowList bs))
+ | otherwise = error "varying list lengths"
+
+-- gauss table with matrix at the right hand side
+gaussMRH :: [[Rational]] -> [[Rational]] -> [[GElem]]
+gaussMRH as bs
+ | as == [] || bs == [] = error "empty list"
+ | hasSameLengthLists as 
+    && hasSameLengthLists bs 
+    && length as == length bs = executeSteps (
+        zipWith (\a b -> a++b) (toGNestedList as) (map toMRowList bs))
+ | otherwise = error "varying list lengths"
+
+-- identity matrix at the right hand side
+-- gaussIMRH:: [[Rational]] -> [[Rational]] -> [[GElem]]
