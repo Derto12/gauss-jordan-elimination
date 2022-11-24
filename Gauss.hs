@@ -108,6 +108,18 @@ hasSameLengthLists (a:as) = hasHelper a as
      | length a == length l = hasHelper a ls
      | otherwise = False
 
+createIM :: Int -> [[Rational]]
+createIM size = map (\a -> toRow a) [0..size-1]
+ where
+ toRow :: Int -> [Rational]
+ toRow i = map (\e -> if e == i then 1 else 0) [0..size-1]
+
+isSquareM :: [[Rational]] -> Bool
+isSquareM as
+ | hasSameLengthLists as
+    && length as == length (as!!0) = True
+ | otherwise = False
+
 
 -- Gauss-Jordan elimination related functions
 selectNext :: [[GElem]] -> Maybe ((Int, Int), GElem)
@@ -189,4 +201,9 @@ gaussMRH as bs
  | otherwise = error "varying list lengths"
 
 -- identity matrix at the right hand side
--- gaussIMRH:: [[Rational]] -> [[Rational]] -> [[GElem]]
+gaussIMRH:: [[Rational]] -> [[GElem]]
+gaussIMRH as
+ | as == [] = error "empty list"
+ | isSquareM as = executeSteps (
+        zipWith (\a b -> a++b) (toGNestedList as) (map toMRowList (createIM $ length as)))
+ | otherwise = error "The given matrix was not a square matrix."
